@@ -75,6 +75,28 @@ function normalizeDeps(deps) {
   return { required, optional };
 }
 
+function summarizeMarkdown(markdown) {
+  const raw = asString(markdown);
+  if (!raw) return "";
+
+  const lines = raw
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.replace(/^#+\s*/, ""))
+    .map((line) => line.replace(/^[-*]\s+/, ""))
+    .map((line) => line.replace(/`+/g, ""))
+    .map((line) => line.replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1"))
+    .map((line) => line.replace(/<[^>]+>/g, " "))
+    .map((line) => line.replace(/\s+/g, " "))
+    .filter(Boolean);
+
+  if (!lines.length) return "";
+  const first = lines[0];
+  return first.length <= 180 ? first : `${first.slice(0, 177)}...`;
+}
+
 async function readJson(path, fallback) {
   try {
     const raw = await readFile(path, "utf-8");
@@ -110,14 +132,26 @@ export async function loadMirrorIndex(paths) {
     schema_version: 1,
     generated_at: null,
     releases: {},
+    plugins: {},
   });
-  if (!data || typeof data !== "object" || !data.releases || typeof data.releases !== "object") {
+
+  if (!data || typeof data !== "object") {
     return {
       schema_version: 1,
       generated_at: null,
       releases: {},
+      plugins: {},
     };
   }
+
+  if (!data.releases || typeof data.releases !== "object") {
+    data.releases = {};
+  }
+
+  if (!data.plugins || typeof data.plugins !== "object") {
+    data.plugins = {};
+  }
+
   return data;
 }
 
@@ -241,19 +275,29 @@ export function buildCatalog(rawReleases, mirrorIndex, pluginIdMap, preferMirror
     const stable = pickStableRelease(releases);
     if (!stable) continue;
 
+    const pluginMeta = mirrorIndex.plugins?.[group.key] || {};
+    const readmeMarkdown = asString(pluginMeta.readme_markdown);
+    const description =
+      stable.description ||
+      asString(pluginMeta.description) ||
+      summarizeMarkdown(readmeMarkdown);
+
     const dev = pickDevRelease(releases, stable.release_id);
     const id = nextPluginIdMap[group.key];
-    const owner = parseOwner(stable.repo_name);
+    const owner = asString(pluginMeta.author_owner) || parseOwner(stable.repo_name || pluginMeta.repo_name);
     const deps = normalizeDeps(stable.deps);
+    const repoName = asString(pluginMeta.repo_name) || stable.repo_name;
 
     const detail = {
       id,
       name: group.name,
       author: owner,
-      description: stable.description || "",
+      description,
+      readme_markdown: readmeMarkdown,
+      readme_source_url: asString(pluginMeta.readme_source_url) || null,
       icon_url: stable.icon_url || "happy_ghast.png",
       featured: false,
-      repo: stable.repo_name ? `https://github.com/${stable.repo_name}` : null,
+      repo: repoName ? `https://github.com/${repoName}` : null,
       archive_repo: null,
       approved_release_tag: `r-${stable.release_id}`,
       stars: stable.score || 0,

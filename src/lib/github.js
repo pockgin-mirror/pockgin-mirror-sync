@@ -1,4 +1,4 @@
-import { fetchWithRetry, readJsonOrThrow } from "./http.js";
+import { fetchWithRetry, readJsonOrThrow, readTextOrThrow } from "./http.js";
 
 const API_BASE = "https://api.github.com";
 
@@ -9,6 +9,22 @@ function buildHeaders(token, userAgent, extra = {}) {
     "User-Agent": userAgent,
     ...extra,
   };
+}
+
+function parseRepoName(repoName) {
+  const cleaned = String(repoName || "").trim().replace(/^https?:\/\/github\.com\//i, "").replace(/\.git$/i, "");
+  const parts = cleaned.split("/").filter(Boolean);
+  if (parts.length < 2) return null;
+  return {
+    owner: parts[0],
+    repo: parts[1],
+    fullName: `${parts[0]}/${parts[1]}`,
+  };
+}
+
+export function buildRepoUrl(repoName) {
+  const parsed = parseRepoName(repoName);
+  return parsed ? `https://github.com/${parsed.fullName}` : null;
 }
 
 export async function githubJsonRequest({ token, userAgent, method = "GET", path, body }) {
@@ -95,38 +111,6 @@ export async function ensureRelease({ owner, repo, tag, token, userAgent, name, 
   return createRelease({ owner, repo, tag, token, userAgent, name, body });
 }
 
-export async function deleteReleaseAsset({ uploadUrl, token, userAgent, assetName }) {
-  const listUrl = normalizeUploadUrl(uploadUrl);
-  const releaseUrl = listUrl.replace(/\/assets$/, "");
-  const response = await fetchWithRetry(
-    releaseUrl,
-    {
-      headers: buildHeaders(token, userAgent),
-    },
-    { label: "get release for asset delete" }
-  );
-
-  const release = await readJsonOrThrow(response, "Load release metadata for asset delete");
-  const matched = Array.isArray(release.assets)
-    ? release.assets.find((asset) => asset?.name === assetName)
-    : null;
-
-  if (!matched) return;
-
-  const del = await fetchWithRetry(
-    `${API_BASE}/repos/${release.repository.full_name}/releases/assets/${matched.id}`,
-    {
-      method: "DELETE",
-      headers: buildHeaders(token, userAgent),
-    },
-    { label: `delete asset ${assetName}` }
-  );
-
-  if (!del.ok && del.status !== 404) {
-    throw new Error(`Delete existing asset failed (${del.status})`);
-  }
-}
-
 export function normalizeUploadUrl(uploadUrl) {
   return String(uploadUrl || "").replace(/\{\?name,label\}$/, "");
 }
@@ -172,4 +156,27 @@ export async function downloadArtifact(url, userAgent) {
   const contentType = response.headers.get("content-type") || "application/octet-stream";
   const bytes = Buffer.from(await response.arrayBuffer());
   return { bytes, contentType };
+}
+
+export async function fetchRepoReadme({ repoName, token, userAgent }) {
+  const parsed = parseRepoName(repoName);
+  if (!parsed) return null;
+
+  const url = `${API_BASE}/repos/${parsed.fullName}/readme`;
+  const response = await fetchWithRetry(
+    url,
+    {
+      headers: buildHeaders(token, userAgent, {
+        Accept: "application/vnd.github.raw",
+      }),
+    },
+    { label: `fetch readme ${parsed.fullName}` }
+  );
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  const body = await readTextOrThrow(response, `Fetch README ${parsed.fullName}`);
+  return body.trim() ? body : null;
 }

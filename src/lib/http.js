@@ -72,3 +72,11 @@ export async function readJsonOrThrow(response, context) {
 
   throw new Error(`${context} failed (${response.status}): ${body.slice(0, 500)}`);
 }
+
+export async function readTextOrThrow(response, context) {
+  const body = await response.text();
+  if (response.ok) {
+    return body;
+  }
+  throw new Error(`${context} failed (${response.status}): ${body.slice(0, 500)}`);
+}

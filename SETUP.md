@@ -8,12 +8,13 @@
 4. Verify output in `pockgin-mirror-manifest/public/data/*`.
 5. Increase batch size gradually (100 -> 250) after first success.
 
-## Metadata refresh
+## Metadata refresh / backfill
 
-To rewrite release notes for already mirrored releases:
+To rewrite release notes and backfill README metadata for already mirrored releases:
 
 - Set `REFRESH_EXISTING_METADATA=true`
 - Run workflow with a small `batch_size` (e.g. 25-100)
+- Repeat runs until `mirror-index.json` has README data for desired plugins
 
 ## Notes
 

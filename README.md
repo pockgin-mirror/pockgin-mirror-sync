@@ -31,4 +31,6 @@ The script updates:
 - `public/data/mirror-index.json`
 - `public/data/sync-state.json`
 
+It also enriches plugin detail with README content (`readme_markdown`) from source GitHub repos.
+
 inside `MANIFEST_DIR`.

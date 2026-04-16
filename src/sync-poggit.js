@@ -11,6 +11,7 @@ import {
   saveCatalog,
 } from "./lib/manifest.js";
 import { mirrorOneRelease } from "./lib/mirror.js";
+import { enrichPluginMetadata } from "./lib/plugin-metadata.js";
 
 function summarizePlugins(rawReleases) {
   const names = new Set();
@@ -77,6 +78,13 @@ async function main() {
       console.warn(`[fail] ${label}: ${message}`);
     }
   }
+
+  const enrichStats = await enrichPluginMetadata({
+    releases: selected,
+    mirrorIndex,
+    config,
+  });
+  console.log(`[metadata] updated ${enrichStats.updated_plugins}/${enrichStats.total_candidates} plugin metadata entries`);
 
   const catalog = buildCatalog(rawReleases, mirrorIndex, pluginIdMap, config.preferMirrorOnly);
 
