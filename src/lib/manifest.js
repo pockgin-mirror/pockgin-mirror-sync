@@ -75,26 +75,70 @@ function normalizeDeps(deps) {
   return { required, optional };
 }
 
-function summarizeMarkdown(markdown) {
+function stripMarkdownNoise(text) {
+  return asString(text)
+    .replace(/\r\n/g, "\n")
+    .replace(/!\[[^\]]*\]\((?:[^)(]+|\([^)(]*\))*\)/g, " ")
+    .replace(/\[([^\]]+)\]\((?:[^)(]+|\([^)(]*\))*\)/g, "$1")
+    .replace(/`{1,3}[^`]*`{1,3}/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/^[#>\-*+\s|:]+/gm, " ")
+    .replace(/\|/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isWeakDescription(text, pluginName) {
+  const value = asString(text);
+  if (!value) return true;
+
+  const lower = value.toLowerCase();
+  const name = asString(pluginName).toLowerCase();
+
+  if (value.length < 6) return true;
+  if (lower === "overview") return true;
+  if (name && (lower === name || lower === `${name} overview` || lower === `${name}.`)) return true;
+  if (/^![a-z0-9_.-]+$/i.test(value)) return true;
+  if (/^[a-z0-9_.-]+_title$/i.test(value)) return true;
+  if (/^[-_=*~`|:]+$/.test(value)) return true;
+  if (/^\w+\s*\{\s*\}$/.test(value)) return true;
+  if (/^(commands|permissions|config|installation|contact)$/i.test(value)) return true;
+  if (/^(poggit|github|release|dev builds?)$/i.test(value)) return true;
+
+  return false;
+}
+
+function sanitizeDescriptionCandidate(value, pluginName) {
+  const cleaned = stripMarkdownNoise(value);
+  if (!cleaned) return "";
+
+  const normalized = cleaned.length <= 180 ? cleaned : `${cleaned.slice(0, 177).trim()}...`;
+  if (isWeakDescription(normalized, pluginName)) return "";
+  return normalized;
+}
+
+function summarizeMarkdown(markdown, pluginName) {
   const raw = asString(markdown);
   if (!raw) return "";
 
-  const lines = raw
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => line.replace(/^#+\s*/, ""))
-    .map((line) => line.replace(/^[-*]\s+/, ""))
-    .map((line) => line.replace(/`+/g, ""))
-    .map((line) => line.replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1"))
-    .map((line) => line.replace(/<[^>]+>/g, " "))
-    .map((line) => line.replace(/\s+/g, " "))
-    .filter(Boolean);
+  const lines = raw.replace(/\r\n/g, "\n").split("\n");
+  for (const line of lines) {
+    const candidate = sanitizeDescriptionCandidate(line, pluginName);
+    if (candidate) return candidate;
+  }
 
-  if (!lines.length) return "";
-  const first = lines[0];
-  return first.length <= 180 ? first : `${first.slice(0, 177)}...`;
+  return "";
+}
+
+function pickBestDescription(pluginName, stableDescription, pluginMetaDescription, readmeMarkdown) {
+  const candidates = [
+    sanitizeDescriptionCandidate(stableDescription, pluginName),
+    sanitizeDescriptionCandidate(pluginMetaDescription, pluginName),
+    summarizeMarkdown(readmeMarkdown, pluginName),
+  ].filter(Boolean);
+
+  return candidates[0] || "";
 }
 
 async function readJson(path, fallback) {
@@ -277,10 +321,12 @@ export function buildCatalog(rawReleases, mirrorIndex, pluginIdMap, preferMirror
 
     const pluginMeta = mirrorIndex.plugins?.[group.key] || {};
     const readmeMarkdown = asString(pluginMeta.readme_markdown);
-    const description =
-      stable.description ||
-      asString(pluginMeta.description) ||
-      summarizeMarkdown(readmeMarkdown);
+    const description = pickBestDescription(
+      group.name,
+      stable.description,
+      asString(pluginMeta.description),
+      readmeMarkdown
+    );
 
     const dev = pickDevRelease(releases, stable.release_id);
     const id = nextPluginIdMap[group.key];
