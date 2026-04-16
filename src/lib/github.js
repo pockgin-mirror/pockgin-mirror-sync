@@ -55,9 +55,43 @@ export async function createRelease({ owner, repo, tag, token, userAgent, name, 
   return readJsonOrThrow(response, `Create release ${tag}`);
 }
 
+export async function updateRelease({ owner, repo, releaseId, token, userAgent, name, body }) {
+  const path = `/repos/${owner}/${repo}/releases/${releaseId}`;
+  const response = await githubJsonRequest({
+    token,
+    userAgent,
+    method: "PATCH",
+    path,
+    body: {
+      name,
+      body,
+      draft: false,
+      prerelease: false,
+      make_latest: "false",
+    },
+  });
+
+  return readJsonOrThrow(response, `Update release ${releaseId}`);
+}
+
 export async function ensureRelease({ owner, repo, tag, token, userAgent, name, body }) {
   const existing = await getReleaseByTag({ owner, repo, tag, token, userAgent });
-  if (existing) return existing;
+  if (existing) {
+    const existingName = String(existing.name || "");
+    const existingBody = String(existing.body || "");
+    if (existingName !== String(name || "") || existingBody !== String(body || "")) {
+      return updateRelease({
+        owner,
+        repo,
+        releaseId: existing.id,
+        token,
+        userAgent,
+        name,
+        body,
+      });
+    }
+    return existing;
+  }
   return createRelease({ owner, repo, tag, token, userAgent, name, body });
 }
 

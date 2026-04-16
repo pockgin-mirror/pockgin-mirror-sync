@@ -23,6 +23,7 @@ export function loadConfig() {
     manifestDir: resolve(process.env.MANIFEST_DIR || "../pockgin-mirror-manifest"),
     batchSize: Number.isFinite(batch) && batch > 0 ? batch : 100,
     preferMirrorOnly: parseBoolean(process.env.PREFER_MIRROR_ONLY, true),
+    refreshExistingMetadata: parseBoolean(process.env.REFRESH_EXISTING_METADATA, false),
     userAgent: "Pockgin-Mirror-Sync/0.1",
   };
 }

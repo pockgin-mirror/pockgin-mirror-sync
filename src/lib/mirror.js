@@ -23,6 +23,54 @@ function getExistingAsset(release, name) {
   return release.assets.find((asset) => asset?.name === name) || null;
 }
 
+function parseOwner(repoName) {
+  const parts = String(repoName || "").split("/");
+  return parts.length >= 2 ? parts[0] : "Unknown";
+}
+
+function formatApiRange(apiList) {
+  if (!Array.isArray(apiList) || apiList.length === 0) return "n/a";
+  const first = apiList[0] || {};
+  const from = String(first.from || "").trim();
+  const to = String(first.to || "").trim();
+  if (!from && !to) return "n/a";
+  if (!to) return from;
+  if (!from) return to;
+  return `${from} -> ${to}`;
+}
+
+function buildReleaseBody(release, releaseId, artifactUrl) {
+  const repoName = String(release?.repo_name || "").trim();
+  const owner = parseOwner(repoName);
+  const projectUrl = repoName ? `https://github.com/${repoName}` : "n/a";
+  const poggitProject = String(release?.html_url || "").trim() || "n/a";
+  const descriptionUrl = String(release?.description_url || "").trim() || "n/a";
+  const changelogUrl = String(release?.changelog_url || "").trim() || "n/a";
+  const downloads = Number(release?.downloads || 0);
+  const score = Number(release?.score || 0);
+  const depCount = Array.isArray(release?.deps) ? release.deps.length : 0;
+  const apiRange = formatApiRange(release?.api);
+
+  return [
+    "Mirrored from Poggit",
+    "",
+    `- plugin: ${release?.name || "unknown"}`,
+    `- version: ${release?.version || "unknown"}`,
+    `- author_owner: ${owner}`,
+    `- source_repo: ${repoName || "n/a"}`,
+    `- source_repo_url: ${projectUrl}`,
+    `- poggit_project: ${poggitProject}`,
+    `- poggit_release_id: ${releaseId}`,
+    `- downloads: ${downloads}`,
+    `- score: ${score}`,
+    `- api_range: ${apiRange}`,
+    `- dependencies_count: ${depCount}`,
+    `- description_url: ${descriptionUrl}`,
+    `- changelog_url: ${changelogUrl}`,
+    `- source_artifact: ${artifactUrl}`,
+  ].join("\n");
+}
+
 export async function mirrorOneRelease({ release, config, mirrorIndex }) {
   const releaseId = Number(release?.id);
   if (!Number.isFinite(releaseId)) {
@@ -30,7 +78,8 @@ export async function mirrorOneRelease({ release, config, mirrorIndex }) {
   }
 
   const key = String(releaseId);
-  if (mirrorIndex.releases[key]?.download_url) {
+  const existingIndex = mirrorIndex.releases[key] || null;
+  if (existingIndex?.download_url && !config.refreshExistingMetadata) {
     return { skipped: true, reason: "already_mirrored" };
   }
 
@@ -41,6 +90,7 @@ export async function mirrorOneRelease({ release, config, mirrorIndex }) {
 
   const tag = `r-${releaseId}`;
   const assetName = pickAssetName(releaseId, release.name, release.version);
+  const releaseBody = buildReleaseBody(release, releaseId, artifactUrl);
 
   const ghRelease = await ensureRelease({
     owner: config.mirrorOwner,
@@ -49,18 +99,12 @@ export async function mirrorOneRelease({ release, config, mirrorIndex }) {
     token: config.githubToken,
     userAgent: config.userAgent,
     name: `${release.name} ${release.version}`,
-    body: [
-      "Mirrored from Poggit",
-      `- plugin: ${release.name}`,
-      `- version: ${release.version}`,
-      `- poggit_release_id: ${releaseId}`,
-      `- source_artifact: ${artifactUrl}`,
-    ].join("\n"),
+    body: releaseBody,
   });
 
   let asset = getExistingAsset(ghRelease, assetName);
-  let fileHash = null;
-  let size = null;
+  let fileHash = existingIndex?.sha256 || null;
+  let size = existingIndex?.size_bytes || null;
 
   if (!asset) {
     const { bytes, contentType } = await downloadArtifact(artifactUrl, config.userAgent);
@@ -81,6 +125,17 @@ export async function mirrorOneRelease({ release, config, mirrorIndex }) {
     release_id: releaseId,
     plugin_name: String(release?.name || ""),
     version: String(release?.version || ""),
+    author_owner: parseOwner(release?.repo_name),
+    source_repo: String(release?.repo_name || ""),
+    source_repo_url: release?.repo_name ? `https://github.com/${release.repo_name}` : null,
+    source_project_url: String(release?.html_url || "") || null,
+    source_description_url: String(release?.description_url || "") || null,
+    source_changelog_url: String(release?.changelog_url || "") || null,
+    downloads: Number(release?.downloads || 0),
+    score: Number(release?.score || 0),
+    is_pre_release: Boolean(release?.is_pre_release),
+    api_range: formatApiRange(release?.api),
+    dependencies_count: Array.isArray(release?.deps) ? release.deps.length : 0,
     tag,
     asset_name: asset.name,
     download_url: asset.browser_download_url,

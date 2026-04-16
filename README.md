@@ -21,6 +21,7 @@ Environment variables:
 - `MANIFEST_DIR` (default: `../pockgin-mirror-manifest`)
 - `BATCH_SIZE` (default: `100`)
 - `PREFER_MIRROR_ONLY` (default: `true`)
+- `REFRESH_EXISTING_METADATA` (default: `false`)
 
 The script updates:
 

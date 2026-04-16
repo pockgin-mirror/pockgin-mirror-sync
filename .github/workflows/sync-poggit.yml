@@ -4,9 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       batch_size:
-        description: "How many new releases to mirror in this run"
+        description: "How many releases to process in this run"
         required: false
         default: "100"
+      refresh_existing_metadata:
+        description: "Update release notes/index even for already mirrored releases"
+        required: false
+        default: "false"
   schedule:
     - cron: "17 */6 * * *"
 
@@ -46,6 +50,7 @@ jobs:
           MANIFEST_DIR: ${{ github.workspace }}/manifest
           BATCH_SIZE: ${{ github.event.inputs.batch_size || '100' }}
           PREFER_MIRROR_ONLY: "true"
+          REFRESH_EXISTING_METADATA: ${{ github.event.inputs.refresh_existing_metadata || 'false' }}
         run: npm run sync:poggit
 
       - name: Commit and push manifest changes

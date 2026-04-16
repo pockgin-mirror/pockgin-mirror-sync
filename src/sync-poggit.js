@@ -21,11 +21,16 @@ function summarizePlugins(rawReleases) {
   return names.size;
 }
 
-function pickCandidates(rawReleases, mirrorIndex) {
-  return rawReleases
+function pickCandidates(rawReleases, mirrorIndex, refreshExistingMetadata) {
+  const base = rawReleases
     .filter((item) => Number.isFinite(Number(item?.id)) && String(item?.artifact_url || "").trim())
-    .filter((item) => !mirrorIndex.releases[String(Number(item.id))]?.download_url)
     .sort((a, b) => Number(b.id) - Number(a.id));
+
+  if (refreshExistingMetadata) {
+    return base;
+  }
+
+  return base.filter((item) => !mirrorIndex.releases[String(Number(item.id))]?.download_url);
 }
 
 async function main() {
@@ -40,6 +45,7 @@ async function main() {
   console.log(`manifest dir: ${config.manifestDir}`);
   console.log(`batch size: ${config.batchSize}`);
   console.log(`prefer mirror only: ${config.preferMirrorOnly}`);
+  console.log(`refresh existing metadata: ${config.refreshExistingMetadata}`);
 
   const paths = await prepareManifestPaths(config.manifestDir);
   const mirrorIndex = await loadMirrorIndex(paths);
@@ -48,7 +54,7 @@ async function main() {
   const rawReleases = await fetchPoggitReleases(config.userAgent);
   console.log(`poggit releases fetched: ${rawReleases.length}`);
 
-  const candidates = pickCandidates(rawReleases, mirrorIndex);
+  const candidates = pickCandidates(rawReleases, mirrorIndex, config.refreshExistingMetadata);
   const selected = candidates.slice(0, config.batchSize);
   console.log(`mirror candidates: ${candidates.length}, selected this run: ${selected.length}`);
 
