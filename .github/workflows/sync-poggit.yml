@@ -1,0 +1,62 @@
+name: Sync Poggit Mirror
+
+on:
+  workflow_dispatch:
+    inputs:
+      batch_size:
+        description: "How many new releases to mirror in this run"
+        required: false
+        default: "100"
+  schedule:
+    - cron: "17 */6 * * *"
+
+concurrency:
+  group: poggit-mirror-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout sync repo
+        uses: actions/checkout@v4
+
+      - name: Checkout manifest repo
+        uses: actions/checkout@v4
+        with:
+          repository: pockgin-mirror/pockgin-mirror-manifest
+          token: ${{ secrets.MIRROR_GH_TOKEN }}
+          path: manifest
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run mirror sync
+        env:
+          GITHUB_TOKEN: ${{ secrets.MIRROR_GH_TOKEN }}
+          MIRROR_OWNER: pockgin-mirror
+          PHARS_REPO: pockgin-mirror-phars
+          MANIFEST_DIR: ${{ github.workspace }}/manifest
+          BATCH_SIZE: ${{ github.event.inputs.batch_size || '100' }}
+          PREFER_MIRROR_ONLY: "true"
+        run: npm run sync:poggit
+
+      - name: Commit and push manifest changes
+        working-directory: manifest
+        run: |
+          git config user.name "pockgin-mirror-bot"
+          git config user.email "pockgin-mirror-bot@users.noreply.github.com"
+          git add .
+          if git diff --cached --quiet; then
+            echo "No manifest changes"
+            exit 0
+          fi
+          git commit -m "chore: update mirror manifest"
+          git push origin main

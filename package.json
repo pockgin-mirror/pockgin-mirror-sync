@@ -1,0 +1,13 @@
+{
+  "name": "@pockgin-mirror/sync",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Mirror Poggit releases to pockgin-mirror and generate static manifest JSON.",
+  "scripts": {
+    "sync:poggit": "node src/sync-poggit.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
